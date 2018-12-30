@@ -45,6 +45,7 @@ To run the unit tests, install the `meson` and `ninja` build systems, then run
 git clone https://github.com/astoeckel/soft323x
 cd soft323x; mkdir build; cd build;
 meson .. -Dbuildtype=release
+ninja
 ./test_soft323x
 ```
 
