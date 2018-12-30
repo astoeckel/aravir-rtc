@@ -17,11 +17,14 @@
  */
 
 /**
- * Provides a software implementation of the DS3232 hardware real time clock.
- * This code is meant to be executed on a microcontroller connected to another
- * host computer via I2C.
+ * Provides an (incomplete) software implementation of the DS3232 hardware real
+ * time clock. This code is meant to be executed on a microcontroller connected
+ * to another host computer via I2C.
  *
- * @author https://datasheets.maximintegrated.com/en/ds/DS3232.pdf
+ * See https://datasheets.maximintegrated.com/en/ds/DS3232.pdf for more
+ * information.
+ *
+ * @author Andreas Stöckel
  */
 
 #if __AVR__
@@ -105,6 +108,195 @@ private:
 	std::atomic<uint8_t> m_ticks;
 #endif
 
+	/**
+	 * Set to true if the date was modified. Correspondingly, we must check the
+	 * date for validity, i.e. check whether the entire YYYY/MM/DD triple is
+	 * correct.
+	 */
+	bool m_wrote_date;
+
+	/**************************************************************************
+	 * Internal helper functions                                              *
+	 **************************************************************************/
+
+	/**
+	 * Atomically reads the content of the variable m_ticks and resets it to
+	 * zero.
+	 *
+	 * @return the value of m_ticks before it was reset to zero.
+	 */
+	uint8_t atomic_consume_ticks()
+	{
+		// Atomically read the number of queued ticks and reset the number of
+		// queued ticks to zero
+		uint8_t ticks;
+#if __AVR__
+		ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+		{
+			ticks = m_ticks;
+			m_ticks = 0U;
+		}
+#else
+		ticks = m_ticks.exchange(0U);
+#endif
+		return ticks;
+	}
+
+	/**
+	 * Used internally by update() to make sure that the date/month/year
+	 * combination is valid.
+	 */
+	void canonicalise_date() {
+		const uint8_t n_days = number_of_days(month(), year());
+		m_regs.regs.date = bcd_canon(m_regs.regs.date, bcd_enc(1), bcd_enc(n_days));
+	}
+
+	/**
+	 * Used internally by update() to increment the time by one second.
+	 */
+	void increment_time()
+	{
+		// Shorthand for accessing the time registers
+		Registers &t = m_regs.regs;
+
+		// Increment seconds
+		if (!increment_bcd(t.seconds, MASK_SECONDS, bcd_enc(59))) {
+			return;
+		}
+
+		// Increment minutes
+		if (!increment_bcd(t.minutes, MASK_MINUTES, bcd_enc(59))) {
+			return;
+		}
+
+		// Increment the hour. Must distinguish between 12 and 24 hour mode.
+		if (t.hours & BIT_HOUR_12_HOURS) {
+			// We're in the 12 hours mode. Sigh.
+			if (!increment_bcd(t.hours, MASK_HOURS_12_HOURS, bcd_enc(13), 1)) {
+				if ((t.hours & MASK_HOURS_12_HOURS) == bcd_enc(13)) {
+					// Overflow from 12 -> 1
+					t.hours = (t.hours & ~MASK_HOURS_12_HOURS) | bcd_enc(1);
+					return;
+				} else if ((t.hours & MASK_HOURS_12_HOURS) == bcd_enc(12)) {
+					// Flip the PM/AM flag
+					t.hours = t.hours ^ BIT_HOUR_PM;
+					if (t.hours & BIT_HOUR_PM) {
+						// It just became noon. No further overflow happens.
+						return;
+					}
+					// It's 12 a.m. New day! Overflow the day and date.
+				}
+				else {
+					return;
+				}
+			}
+		}
+		else {
+			// We're in the 24 hours mode. This is sane people's land.
+			if (!increment_bcd(t.hours, MASK_HOURS_24_HOURS, bcd_enc(23))) {
+				return;
+			}
+		}
+
+		// A new day has started. Increment the day.
+		increment_bcd(t.day, MASK_DAY, bcd_enc(7), 1);
+
+		// Increment the date
+		{
+			const uint8_t n_days = number_of_days(month(), year());
+			if (!increment_bcd(t.date, MASK_DATE, bcd_enc(n_days), 1)) {
+				return;
+			}
+		}
+
+		// Increment the month.
+		if (!increment_bcd(t.month, MASK_MONTH, bcd_enc(12), 1)) {
+			return;
+		}
+
+		// Increment the year. (Play Auld Lang Syne.)
+		if (!increment_bcd(t.year, MASK_YEAR, bcd_enc(99))) {
+			return;
+		}
+
+		// Huzzah! A new century hath begun. (Toggle the century bits.)
+		t.month = t.month ^ BIT_MONTH_CENTURY0;
+		if (!(t.month & BIT_MONTH_CENTURY0)) {
+			t.month = t.month ^ BIT_MONTH_CENTURY1;
+			if (!(t.month & BIT_MONTH_CENTURY1)) {
+				t.month = t.month ^ BIT_MONTH_CENTURY2;
+				// No more bits to overflow to. Sorry people of the future.
+			}
+		}
+	}
+
+	/**
+	 * Checks whether any of the given alarms has expired; if yes, sets the
+	 * corresponding flag in the control register. This must be called exactly
+	 * once per second for Alarm 1 to work correctly. Note: This code relies on
+	 * the optimizer to rearange the computations to actually happen when
+	 * assigning values to the local variables "alarm1" and "alarm2".
+	 */
+	void check_alarms()
+	{
+		// Shorthand for the registers
+		Registers &t = m_regs.regs;
+
+		// Skip all the computation if the alarm flags are already set
+		const bool a1f = t.ctrl_2 & BIT_CTRL_2_A1F;
+		const bool a2f = t.ctrl_2 & BIT_CTRL_2_A2F;
+
+		// Read the alarm flags
+		const bool a1m1 = !!(t.alarm_1_seconds & BIT_ALARM_MODE);
+		const bool a1m2 = !!(t.alarm_1_minutes & BIT_ALARM_MODE);
+		const bool a1m3 = !!(t.alarm_1_hours & BIT_ALARM_MODE);
+		const bool a1m4 = !!(t.alarm_1_day_or_date & BIT_ALARM_MODE);
+		const bool a1dy = !!(t.alarm_1_day_or_date & BIT_ALARM_IS_DAY);
+
+		const bool a2m1 = !!(t.alarm_2_minutes & BIT_ALARM_MODE);
+		const bool a2m2 = !!(t.alarm_2_hours & BIT_ALARM_MODE);
+		const bool a2m3 = !!(t.alarm_2_day_or_date & BIT_ALARM_MODE);
+		const bool a2dy = !!(t.alarm_2_day_or_date & BIT_ALARM_IS_DAY);
+
+		// Apply the correct masks to the time values
+		const uint8_t ss = t.seconds & MASK_SECONDS;
+		const uint8_t mm = t.minutes & MASK_MINUTES;
+		const uint8_t hh = t.hours & 0x7F;
+		const uint8_t dy = t.day & MASK_DAY;
+		const uint8_t dt = t.date & MASK_DATE;
+
+		// Apply the correct masks to the alarm values
+		const uint8_t a1_ss = t.alarm_1_seconds & MASK_SECONDS;
+		const uint8_t a1_mm = t.alarm_1_minutes & MASK_MINUTES;
+		const uint8_t a1_hh = t.alarm_1_hours & 0x7F;
+		const uint8_t a1_dy_dt = a1dy ? (t.alarm_1_day_or_date & MASK_DAY)
+		                              : (t.alarm_1_day_or_date & MASK_DATE);
+
+		const uint8_t a2_mm = t.alarm_2_minutes & MASK_MINUTES;
+		const uint8_t a2_hh = t.alarm_2_hours & 0x7F;
+		const uint8_t a2_dy_dt = a2dy ? (t.alarm_2_day_or_date & MASK_DAY)
+		                              : (t.alarm_2_day_or_date & MASK_DATE);
+
+		// Compute whether the alarm has triggered
+		const bool alarm1 =
+		    (!a1f) && (a1m1 || (!a1m1 && (a1_ss == ss))) && (a1m2 || (!a1m2 && (a1_mm == mm))) &&
+		    (a1m3 || (!a1m3 && (a1_hh == hh))) && (a1m4 || (!a1m4 && ((a1dy ? dy : dt) == a1_dy_dt)));
+
+		const bool alarm2 = (!a2f) && (ss == 0) && (a2m1 || (!a2m1 && (a2_mm == mm))) &&
+		                    (a2m2 || (!a2m2 && (a2_hh == hh))) &&
+		                    (a2m3 || (!a2m3 && ((a2dy ? dy : dt) == a2_dy_dt)));
+
+		// TODO: Interrupt handling
+
+		// Update the "alarm fired" flags in the control registers
+		if (alarm1) {
+			t.ctrl_2 = t.ctrl_2 | BIT_CTRL_2_A1F;
+		}
+		if (alarm2) {
+			t.ctrl_2 = t.ctrl_2 | BIT_CTRL_2_A2F;
+		}
+	}
+
 public:
 	/**************************************************************************
 	 * Time and date utility functions                                        *
@@ -167,6 +359,30 @@ public:
 	{
 		// See https://stackoverflow.com/a/42340213
 		return value - 6U * (value >> 4U);
+	}
+
+	/**
+	 * Clamps the given BCD value to the given min/max values.
+	 */
+	static constexpr uint8_t bcd_canon(uint8_t value,
+	                                   uint8_t min_bcd = bcd_enc(0),
+	                                   uint8_t max_bcd = bcd_enc(99))
+	{
+		const uint8_t msd_max = (max_bcd & 0xF0U);
+		const uint8_t lsd_max = (max_bcd & 0x0FU);
+		const uint8_t msd_min = (min_bcd & 0xF0U);
+		const uint8_t lsd_min = (min_bcd & 0x0FU);
+		uint8_t msd = (value & 0xF0U);
+		uint8_t lsd = (value & 0x0FU);
+		if (msd > msd_max || (msd == msd_max && lsd > lsd_max)) {
+			msd = msd_max;
+			lsd = lsd_max;
+		}
+		else if (msd < msd_min || (msd == msd_min && lsd < lsd_min)) {
+			msd = msd_min;
+			lsd = lsd_min;
+		}
+		return msd | lsd;
 	}
 
 	/**
@@ -288,6 +504,7 @@ public:
 	static constexpr uint8_t BIT_HOUR_PM = 0x20;
 	static constexpr uint8_t BIT_MONTH_CENTURY = 0x80;
 	static constexpr uint8_t BIT_ALARM_MODE = 0x80;
+	static constexpr uint8_t BIT_ALARM_IS_DAY = 0x40;
 	static constexpr uint8_t BIT_CTRL_1_EOSC = 0x80;
 	static constexpr uint8_t BIT_CTRL_1_BBSQW = 0x40;
 	static constexpr uint8_t BIT_CTRL_1_CONV = 0x20;
@@ -304,24 +521,48 @@ public:
 	static constexpr uint8_t BIT_CTRL_2_BSY = 0x04;
 	static constexpr uint8_t BIT_CTRL_2_A2F = 0x02;
 	static constexpr uint8_t BIT_CTRL_2_A1F = 0x01;
-	static constexpr uint8_t BIT_CTRL_4_BB_TD = 0x01;
+	static constexpr uint8_t BIT_CTRL_3_BB_TD = 0x01;
 
 	/**
 	 * Note: this implementation uses three century bits that encode the century
 	 * since 1900 in binary, where BIT_MONTH_CENTURY0 is the LSB and
-	 * BIT_MONTH_CENTURY2 is the MSB.
+	 * BIT_MONTH_CENTURY2 is the MSB. This is an extension of the behaviour in
+	 * the DS323x devices.
 	 */
 	static constexpr uint8_t BIT_MONTH_CENTURY0 = 0x80;
 	static constexpr uint8_t BIT_MONTH_CENTURY1 = 0x40;
 	static constexpr uint8_t BIT_MONTH_CENTURY2 = 0x20;
 
+	static constexpr uint8_t ACTION_RESET_TIMER = 0x01;
+	static constexpr uint8_t ACTION_CONVERT_TEMPERATURE = 0x02;
+
+	static constexpr uint8_t REG_SECONDS = 0x00;
+	static constexpr uint8_t REG_MINUTES = 0x01;
+	static constexpr uint8_t REG_HOURS = 0x02;
+	static constexpr uint8_t REG_DAY = 0x03;
+	static constexpr uint8_t REG_DATE = 0x04;
+	static constexpr uint8_t REG_MONTH = 0x05;
+	static constexpr uint8_t REG_YEAR = 0x06;
+	static constexpr uint8_t REG_ALARM_1_SECONDS = 0x07;
+	static constexpr uint8_t REG_ALARM_1_MINUTES = 0x08;
+	static constexpr uint8_t REG_ALARM_1_HOURS = 0x09;
+	static constexpr uint8_t REG_ALARM_1_DAY_OR_DATE = 0x0A;
+	static constexpr uint8_t REG_ALARM_2_MINUTES = 0x0B;
+	static constexpr uint8_t REG_ALARM_2_HOURS = 0x0C;
+	static constexpr uint8_t REG_ALARM_2_DAY_OR_DATE = 0x0D;
+	static constexpr uint8_t REG_CTRL_1 = 0x0E;
+	static constexpr uint8_t REG_CTRL_2 = 0x0F;
+	static constexpr uint8_t REG_AGING_OFFSET = 0x10;
+	static constexpr uint8_t REG_TEMP_MSB = 0x11;
+	static constexpr uint8_t REG_TEMP_LSB = 0x12;
+	static constexpr uint8_t REG_CTRL_3 = 0x13;
+	static constexpr uint8_t REG_SRAM = 0x14;
+
 	/**************************************************************************
 	 * Constructor                                                            *
 	 **************************************************************************/
 
-	Soft323x() : m_ticks(0) {
-		reset();
-	}
+	Soft323x() { reset(); }
 
 	/**************************************************************************
 	 * Time/date API                                                          *
@@ -364,7 +605,8 @@ public:
 				}
 				return h;
 			}
-		} else {
+		}
+		else {
 			return bcd_dec(t.hours & MASK_HOURS_24_HOURS);
 		}
 	}
@@ -418,6 +660,10 @@ public:
 	 */
 	void reset()
 	{
+		// Reset the internal state
+		atomic_consume_ticks();
+		m_wrote_date = false;
+
 		// Reset the date to 2019/01/01 at 00:00:00.
 		m_regs.regs.seconds = bcd_enc(0);
 		m_regs.regs.minutes = bcd_enc(0);
@@ -440,9 +686,19 @@ public:
 		// Reset the control words
 		m_regs.regs.ctrl_1 = BIT_CTRL_1_RS2 | BIT_CTRL_1_RS1 | BIT_CTRL_1_INTCN;
 		m_regs.regs.ctrl_2 = BIT_CTRL_2_OSF;
-		m_regs.regs.aging_offset = bcd_enc(0);
-		m_regs.regs.temp_msb = bcd_enc(0);
-		m_regs.regs.temp_lsb = bcd_enc(0);
+		m_regs.regs.aging_offset = 0;
+		m_regs.regs.temp_msb = 0xFF;
+		m_regs.regs.temp_lsb = 0xC0;
+		m_regs.regs.ctrl_3 = 0;
+	}
+
+	/**
+	 * Marks the current time/date as invalid because the osciallator has been
+	 * stopped.
+	 */
+	void set_oscillator_stop_flag()
+	{
+		m_regs.regs.ctrl_2 = m_regs.regs.ctrl_2 | BIT_CTRL_2_OSF;
 	}
 
 	/**
@@ -471,91 +727,18 @@ public:
 	 */
 	void update()
 	{
-		// Shorthand for accessing the time registers
-		Registers &t = m_regs.regs;
-
-		// Atomically read the number of queued ticks and reset the number of
-		// queued ticks to zero
-		uint8_t ticks;
-#if __AVR__
-		ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
-		{
-			ticks = m_ticks;
-			m_ticks = 0U;
+		// If the date was modified, make sure that the date is valid. Otherwise
+		// strange things will happen while trying to update the time.
+		if (m_wrote_date) {
+			canonicalise_date();
+			m_wrote_date = false;
 		}
-#else
-		ticks = m_ticks.exchange(0U);
-#endif
 
-		// Consume the ticks
+		// Consume the ticks and increment time in seconds steps
+		uint8_t ticks = atomic_consume_ticks();
 		for (uint8_t i = 0; i < ticks; i++) {
-			// Increment seconds
-			if (!increment_bcd(t.seconds, MASK_SECONDS, bcd_enc(59))) {
-				continue;
-			}
-
-			// Increment minutes
-			if (!increment_bcd(t.minutes, MASK_MINUTES, bcd_enc(59))) {
-				continue;
-			}
-
-			// Increment the hour. Must distinguish between 12 and 24 hour mode.
-			if (t.hours & BIT_HOUR_12_HOURS) {
-				// We're in the 12 hours mode. Sigh. Grow up, suckers! This is
-				// complicated shit.
-				if (!increment_bcd(t.hours, MASK_HOURS_12_HOURS, bcd_enc(12),
-				                   1)) {
-					if ((t.hours & MASK_HOURS_12_HOURS) == 12) {
-						// Flip the PM/AM flag
-						t.hours = t.hours ^ BIT_HOUR_PM;
-						if (t.hours & BIT_HOUR_PM) {
-							// It just became noon. No further overflow happens.
-							continue;
-						}
-						// It's 12 a.m. New day! Overflow the day and date.
-					}
-					else {
-						continue;
-					}
-				}
-			}
-			else {
-				// We're in the 24 hours mode. This is sane people's land.
-				if (!increment_bcd(t.hours, MASK_HOURS_24_HOURS, bcd_enc(23))) {
-					continue;
-				}
-			}
-
-			// A new day has started. Increment the day.
-			increment_bcd(t.day, MASK_DAY, bcd_enc(7), 1);
-
-			// Increment the date
-			{
-				const uint8_t n_days = number_of_days(month(), year());
-				if (!increment_bcd(t.date, MASK_DATE, bcd_enc(n_days), 1)) {
-					continue;
-				}
-			}
-
-			// Increment the month.
-			if (!increment_bcd(t.month, MASK_MONTH, bcd_enc(12), 1)) {
-				continue;
-			}
-
-			// Increment the year. (Play Auld Lang Syne.)
-			if (!increment_bcd(t.year, MASK_YEAR, bcd_enc(99))) {
-				continue;
-			}
-
-			// Huzzah! A new century hath begun. (Toggle the century bits.)
-			t.month = t.month ^ BIT_MONTH_CENTURY0;
-			if (!(t.month & BIT_MONTH_CENTURY0)) {
-				t.month = t.month ^ BIT_MONTH_CENTURY1;
-				if (!(t.month & BIT_MONTH_CENTURY1)) {
-					t.month = t.month ^ BIT_MONTH_CENTURY2;
-					// No more bits to overflow to. Sorry people of the future.
-				}
-			}
+			increment_time();
+			check_alarms();
 		}
 	}
 
@@ -580,8 +763,115 @@ public:
 	}
 
 	/**
-	 * Writes to the given address. If this function
+	 * Writes to the given address.
 	 */
-	bool i2c_write(uint8_t addr, uint8_t value) {}
+	uint8_t i2c_write(uint8_t addr, uint8_t value)
+	{
+		uint8_t res = 0;
+		switch (addr) {
+			case REG_SECONDS:  // Reg 00h: Seconds
+				res |= ACTION_RESET_TIMER;
+				// fallthrough
+			case REG_ALARM_1_SECONDS:  // Reg 07h: Seconds
+				m_regs.mem[addr] =
+				    bcd_canon(value & MASK_SECONDS, bcd_enc(0), bcd_enc(59));
+				atomic_consume_ticks();
+				break;                 // Reset countdown chain
+			case REG_MINUTES:          // Reg 01h: Minutes
+			case REG_ALARM_1_MINUTES:  // Reg 08h: Alarm 1 Minutes
+			case REG_ALARM_2_MINUTES:  // Reg 0Bh: Alarm 2 Minutes
+				m_regs.mem[addr] =
+				    bcd_canon(value & MASK_MINUTES, bcd_enc(0), bcd_enc(59));
+				break;
+			case REG_HOURS:            // Reg 02h: Hours
+			case REG_ALARM_1_HOURS:    // Reg 09h: Alarm 1 Hours
+			case REG_ALARM_2_HOURS: {  // Reg 0Ch: Alarm 2 Hours
+				const bool is_12_hour = value & BIT_HOUR_12_HOURS;
+				if (is_12_hour) {
+					m_regs.mem[addr] = bcd_canon(value & MASK_HOURS_12_HOURS,
+					                             bcd_enc(1), bcd_enc(12)) |
+					                   BIT_HOUR_12_HOURS | (value & BIT_HOUR_PM);
+				}
+				else {
+					m_regs.mem[addr] = bcd_canon(value & MASK_HOURS_24_HOURS,
+					                             bcd_enc(0), bcd_enc(23));
+				}
+				break;
+			}
+			case REG_DAY:  // Reg 03h: Day
+				m_regs.mem[addr] =
+				    bcd_canon(value & MASK_DAY, bcd_enc(1), bcd_enc(7));
+				break;
+			case REG_DATE:  // Reg 04h: Date
+				m_regs.mem[addr] =
+				    bcd_canon(value & MASK_DATE, bcd_enc(1), bcd_enc(31));
+				m_wrote_date = true;
+				break;
+			case REG_MONTH:  // Reg 05h: Month
+				m_regs.mem[addr] =
+				    bcd_canon(value & MASK_MONTH, bcd_enc(1), bcd_enc(12)) |
+				    (value & (BIT_MONTH_CENTURY0 | BIT_MONTH_CENTURY1 |
+				              BIT_MONTH_CENTURY2));
+				m_wrote_date = true;
+				break;
+			case REG_YEAR:  // Reg 06h: Year
+				m_regs.mem[addr] = bcd_canon(value & MASK_YEAR);
+				m_wrote_date = true;
+				break;
+			case REG_ALARM_1_DAY_OR_DATE:    // Reg 09h: Alarm 1 Day/date
+			case REG_ALARM_2_DAY_OR_DATE: {  // Reg 0Dh: Alarm 2 Day/date
+				const bool is_day = value & BIT_ALARM_IS_DAY;
+				if (is_day) {
+					m_regs.mem[addr] =
+					    bcd_canon(value & MASK_DAY, bcd_enc(1), bcd_enc(7)) |
+					    BIT_ALARM_IS_DAY;
+				}
+				else {
+					m_regs.mem[addr] =
+					    bcd_canon(value & MASK_DATE, bcd_enc(1), bcd_enc(31));
+				}
+				break;
+			}
+			case REG_CTRL_1:  // Reg 0Eh: Control 1
+				// Do not reset the CONV flag
+				m_regs.mem[addr] = value | (m_regs.mem[addr] & BIT_CTRL_1_CONV);
+				if (value & BIT_CTRL_1_CONV) {
+					res |= ACTION_CONVERT_TEMPERATURE;
+				}
+				// TODO: Handle other control flags
+				break;
+			case REG_CTRL_2:  // Reg 0Fh: Control 2/Status
+				// The OSF, A1F, A2F registers can only be set to zero. The BSY
+				// register is write-protected.
+				m_regs.mem[addr] =
+				    (value & ~(BIT_CTRL_2_OSF | BIT_CTRL_2_A1F |
+				               BIT_CTRL_2_A2F | BIT_CTRL_2_BSY)) |
+				    ((value & m_regs.mem[addr]) &
+				     (BIT_CTRL_2_OSF | BIT_CTRL_2_A1F | BIT_CTRL_2_A2F)) |
+				    (value & BIT_CTRL_2_BSY);
+				break;
+			case REG_CTRL_3: // Reg 13h: Control 3
+				m_regs.mem[addr] = value & BIT_CTRL_3_BB_TD;
+				break;
+			case REG_TEMP_MSB: // Reg 11h: Temp MSB
+			case REG_TEMP_LSB: // Reg 12h: Temp LSB
+				// Read-only
+				break;
+			case REG_AGING_OFFSET: // Reg 10h: Aging offset
+				// Just write to the register bank
+			default:  // SRAM
+				if (addr < sizeof(m_regs)) {
+					m_regs.mem[addr] = value;
+				}
+				break;
+		}
+
+		// Copy the alarm mode flag
+		if (addr >= 0x07 && addr <= 0x0D && (value & BIT_ALARM_MODE)) {
+			m_regs.mem[addr] = m_regs.mem[addr] | BIT_ALARM_MODE;
+		}
+
+		return res;
+	}
 };
 #pragma pack(pop)
