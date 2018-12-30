@@ -27,6 +27,8 @@
  * @author Andreas Stöckel
  */
 
+#include <stdint.h>
+
 #if __AVR__
 #include <util/atomic.h>
 #else

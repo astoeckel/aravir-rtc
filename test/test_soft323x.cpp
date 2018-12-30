@@ -16,11 +16,10 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <iostream>
-
-#include <foxen/unittest.h>
-
 #include <soft323x/soft323x.hpp>
+
+#include <iostream>
+#include <foxen/unittest.h>
 
 /******************************************************************************
  * MAIN                                                                       *

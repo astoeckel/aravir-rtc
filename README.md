@@ -1,6 +1,6 @@
 # Soft323x ‒ Software RTC Implemementation for AVRs
 
-Software implementation of the popular Maxim Integrated DS323x series real-time clock ICs for use on 8-bit microcontrollers, such as Microchip AVRs. The intended use-case is to add a real-time clock to single board computer such as a Raspberry Pi that is already connected to an AVR with battery backup via I²C. Simulating the DS323x in software on the AVR means that the Linux kernel modules for these chips can be used.
+Platform-independent software implementation of the popular Maxim Integrated DS323x series real-time clock ICs for use on 8-bit microcontrollers, such as Microchip AVRs. The intended use-case is to add a real-time clock to single board computer such as a Raspberry Pi that is already connected to an AVR with battery backup via I²C. Simulating the DS323x in software on the AVR means that the Linux kernel modules for these chips can be used.
 
 ## Compatibility with the hardware modules
 
@@ -32,6 +32,10 @@ The `Soft323x<SRAM_SIZE>` object mainly features two functions:
 
 * `tick()` should be called from an ISR and will advance the internal second counter by one.
 * `update()` commits the internal second counter to the registers.
+
+### Porting to other platforms
+
+Given a standard compliant C++14 compiler and library, this code is 100% platform independent. However, the code requires an atomic update of the tick counter. On more potent target platforms this is accomplished by using the `<atomic>` header from the C++ standard library, which may not be available for 8-bit µCs. The code contains special handling for AVR microcontrollers where ISRs are temporarily disabled during the update using the AVR libc `<util/atomic.h>`. Please feel free to contribute code for other platforms that cannot use the standard library.
 
 ## Unit tests
 
