@@ -1,6 +1,6 @@
 # Soft323x ‒ Software RTC Implemementation for AVRs
 
-Platform-independent software implementation of the popular Maxim Integrated DS323x series real-time clock ICs for use on 8-bit microcontrollers, such as Microchip AVRs. The intended use-case is to add a real-time clock to single board computer such as a Raspberry Pi that is already connected to an AVR with battery backup via I²C. Simulating the DS323x in software on the AVR means that the Linux kernel modules for these chips can be used.
+Platform-independent software implementation of the popular Maxim Integrated DS323x series real-time clock. The intended use-case is to add a real-time clock to a single board computer such as a Raspberry Pi in cases where it is already connected to a battery backed-up AVR via I²C. Simulating the DS323x in software on the AVR has two benefits in this case: it adds zero cost (except for a clock crystal on the AVR, if not already present) and the Linux kernel modules for the DS323x can be used.
 
 ## Compatibility with the hardware modules
 
