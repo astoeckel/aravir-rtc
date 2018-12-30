@@ -45,3 +45,7 @@ meson .. -Dbuildtype=release
 ```
 
 Note that this may take quite a while depending on your computer, sice the unit tests exhaustively simulate running for several hundred years. The code has 100% coverage and nearly about 93% branch coverage (where most untaken branches correspond to unspecified modes in the alarm subsystem).
+
+## License
+
+This code is licensed under the [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html).
