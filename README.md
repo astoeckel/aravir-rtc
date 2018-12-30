@@ -42,7 +42,7 @@ Given a standard compliant C++14 compiler and library, this code is 100% platfor
 To run the unit tests, install the `meson` and `ninja` build systems, then run
 
 ```sh
-git clone https://github.com/astoecke/soft323x
+git clone https://github.com/astoeckel/soft323x
 cd soft323x; mkdir build; cd build;
 meson .. -Dbuildtype=release
 ./test_soft323x
