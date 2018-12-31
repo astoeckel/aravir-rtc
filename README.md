@@ -8,7 +8,7 @@ A table of all available Maxim Integrated real-time clock ICs can be found at th
 
 This library implements a BCD coded real-time clock with two alarms and was primarily modelled after the DS3232 chip. As of now, it does not provide functionality such as interrupts and square-wave generation, as those were not required for the intended use-case of this library. Feel free to contribute corresponding code.
 
-The library should be more-or-less compatible with the following I²C hardware ICs:
+The library should be more-or-less register compatible with the following I²C hardware ICs:
 
 * [DS1337](https://www.maximintegrated.com/en/products/DS1337)
 * [DS1338](https://www.maximintegrated.com/en/products/DS1338)
@@ -31,7 +31,7 @@ The following (mostly compatible) extensions were implemented:
 The `Soft323x<SRAM_SIZE>` object mainly features two functions:
 
 * `tick()` should be called from an ISR and will advance the internal second counter by one.
-* `update()` commits the internal second counter to the registers.
+* `update()` commits the internal second counter to the RTC registers.
 
 ### Porting to other platforms
 
@@ -49,7 +49,7 @@ ninja
 ./test_soft323x
 ```
 
-Note that this may take quite a while depending on your computer, sice the unit tests exhaustively simulate running for several hundred years. The code has 100% coverage and nearly about 93% branch coverage (where most untaken branches correspond to unspecified modes in the alarm subsystem).
+Note that this may take quite a while (several minutes) depending on your computer, sice the unit tests exhaustively simulate running for several hundred years. The code has 100% coverage and nearly about 93% branch coverage (where most untaken branches correspond to unspecified modes in the alarm subsystem).
 
 ## License
 
