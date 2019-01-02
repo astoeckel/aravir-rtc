@@ -727,7 +727,7 @@ public:
 	 *
 	 * You must ensure that this function is called at least every 255 seconds!
 	 */
-	void update()
+	bool update()
 	{
 		// If the date was modified, make sure that the date is valid. Otherwise
 		// strange things will happen while trying to update the time.
@@ -742,6 +742,7 @@ public:
 			increment_time();
 			check_alarms();
 		}
+		return ticks > 0;
 	}
 
 	/**************************************************************************
@@ -874,6 +875,21 @@ public:
 		}
 
 		return res;
+	}
+
+	/**
+	 * Returns the next I2C address. Updates the clock when the next address is
+	 * zero.
+	 */
+	uint8_t i2c_next_addr(uint8_t addr) {
+		addr++;
+		if (addr >= sizeof(Registers)) {
+			addr = 0;
+		}
+		if (addr == 0) {
+			update();
+		}
+		return addr;
 	}
 };
 #pragma pack(pop)
