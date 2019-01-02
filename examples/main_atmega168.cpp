@@ -21,6 +21,7 @@
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <avr/sleep.h>
+#include <avr/cpufunc.h>
 
 #include <util/atomic.h>
 #include <util/delay.h>
@@ -42,13 +43,10 @@ static void timer1_reset();
 
 static constexpr uint8_t I2C_IDLE = 0;
 static constexpr uint8_t I2C_START = 1;
-static constexpr uint8_t I2C_START_OK = 2;
 static constexpr uint8_t I2C_HAS_ADDR = 3;
 static constexpr uint8_t I2C_SEND_READY = 4;
 static constexpr uint8_t I2C_SEND_BYTE = 5;
-static constexpr uint8_t I2C_SEND_BYTE_OK = 6;
 static constexpr uint8_t I2C_RECV_BYTE = 7;
-static constexpr uint8_t I2C_RECV_BYTE_OK = 8;
 static constexpr uint8_t I2C_ERR = 255;
 
 #define I2C_MAX_EVENTS 64
@@ -58,7 +56,6 @@ struct I2CEvent {
 	uint8_t old_state;
 	uint8_t next_state;
 	uint8_t addr;
-	uint8_t data;
 };
 
 volatile I2CEvent i2c_events[I2C_MAX_EVENTS];
@@ -68,7 +65,7 @@ volatile uint8_t i2c_events_wr_ptr;
 volatile uint8_t i2c_events_rd_ptr;
 
 static void i2c_event_queue_push(uint8_t status, uint8_t old_state,
-                                 uint8_t next_state, uint8_t addr, uint8_t data)
+                                 uint8_t next_state, uint8_t addr)
 {
 	ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
 	{
@@ -77,7 +74,6 @@ static void i2c_event_queue_push(uint8_t status, uint8_t old_state,
 		i2c_events[ptr].old_state = old_state;
 		i2c_events[ptr].next_state = next_state;
 		i2c_events[ptr].addr = addr;
-		i2c_events[ptr].data = data;
 	}
 }
 
@@ -91,7 +87,6 @@ static I2CEvent i2c_event_queue_pop()
 		res.old_state = i2c_events[ptr].old_state;
 		res.next_state = i2c_events[ptr].next_state;
 		res.addr = i2c_events[ptr].addr;
-		res.data = i2c_events[ptr].data;
 	}
 	return res;
 }
@@ -113,11 +108,6 @@ static bool i2c_event_queue_empty()
  */
 volatile uint8_t i2c_addr;
 
-/**
- * The current byte the bus master would like to write.
- */
-volatile uint8_t i2c_data;
-
 volatile uint8_t i2c_status;
 
 static void i2c_ack()
@@ -127,18 +117,10 @@ static void i2c_ack()
 	TWCR = (1 << TWIE) | (1 << TWEA) | (1 << TWINT) | (1 << TWEN);
 }
 
-static void i2c_await_ack()
-{
-	// Enable TWI, clear the TWINT flag, enable address matching, disable TWI
-	// interrupts
-	TWCR = (1 << TWEA) | (1 << TWEN);
-}
-
 static void i2c_listen(uint8_t addr)
 {
 	// Reset the internal state
 	i2c_addr = 0;
-	i2c_data = 0;
 	i2c_status = 0;
 
 	// Set the listen address
@@ -148,110 +130,65 @@ static void i2c_listen(uint8_t addr)
 	i2c_ack();
 }
 
-ISR(TWI_vect)
-{
-	const uint8_t i2c_status_old = i2c_status;
-	const uint8_t tw_status_ = TW_STATUS;
-	switch (tw_status_) {
+static uint8_t i2c_statemachine(uint8_t tw_status) {
+	switch (tw_status) {
 		/* Slave receiver (SR): The master tries to write to this device */
 		case TW_SR_SLA_ACK:
-			i2c_status = I2C_START;
 			i2c_addr = 0;
-			i2c_await_ack();
-			break;
+			rtc.update();
+			return I2C_START;
 		case TW_SR_DATA_ACK:
-			if (i2c_status == I2C_START_OK) {
+			if (i2c_status == I2C_START) {
 				i2c_addr = TWDR;
-				i2c_status = I2C_HAS_ADDR;
-				i2c_ack();  // Does not need to be acknowledged by the main loop
+				return I2C_HAS_ADDR;
 			}
 			else if (i2c_status == I2C_HAS_ADDR ||
-			         i2c_status == I2C_RECV_BYTE_OK) {
-				i2c_data = TWDR;
-				i2c_status = I2C_RECV_BYTE;
-				i2c_await_ack();
-			}
-			else {
-				i2c_status = I2C_ERR;
-				i2c_ack();
+			         i2c_status == I2C_RECV_BYTE) {
+				switch (rtc.i2c_write(i2c_addr, TWDR)) {
+					case rtc.ACTION_RESET_TIMER:
+						timer1_reset();
+						break;
+						// TODO
+						break;
+				}
+				i2c_addr = rtc.i2c_next_addr(i2c_addr);
+				return I2C_RECV_BYTE;
 			}
 			break;
 		case TW_SR_STOP:
 			if (i2c_status == I2C_HAS_ADDR) {
-				i2c_status = I2C_SEND_READY;
-			} else if (i2c_status == I2C_RECV_BYTE_OK) {
-				i2c_status = I2C_IDLE;
-			} else {
-				i2c_status = I2C_ERR;
+				return I2C_SEND_READY;
 			}
-			i2c_ack();
 			break;
 
 		/* Slave transmitter (ST): The master tries to read data from this
 		   device */
 		case TW_ST_SLA_ACK:
 		case TW_ST_DATA_ACK:
-			if (i2c_status == I2C_SEND_READY || i2c_status == I2C_SEND_BYTE_OK) {
-				i2c_status = I2C_SEND_BYTE;
-				i2c_await_ack();
+			if (i2c_status == I2C_SEND_READY || i2c_status == I2C_SEND_BYTE) {
+				TWDR = rtc.i2c_read(i2c_addr);
+				i2c_addr = rtc.i2c_next_addr(i2c_addr);
+				return I2C_SEND_BYTE;
 			}
-			else {
-				i2c_status = I2C_ERR;
-				i2c_ack();
-			}
-			break;
-		case TW_SR_DATA_NACK:
-		case TW_ST_DATA_NACK:
-		case TW_ST_LAST_DATA:
-			i2c_status = I2C_IDLE;
-			i2c_ack();
 			break;
 
 		case TW_BUS_ERROR:
 			// Reset the bus
-			i2c_status = I2C_IDLE;
 			TWCR = 0;
-			i2c_ack();
 			break;
 
-		default:
-			i2c_ack();
-			break;
 	}
 
-	i2c_event_queue_push(tw_status_, i2c_status_old, i2c_status, i2c_addr, i2c_data);
+	return I2C_IDLE;
+}
 
-	// XXX
-
-	// Read the current I2C status to a temporary register. Handle any I2C
-	// event and acknowledge it
-	switch (i2c_status) {
-		case I2C_START:
-			rtc.update();
-			i2c_status = I2C_START_OK;
-			i2c_ack();
-			break;
-		case I2C_RECV_BYTE:
-			switch (rtc.i2c_write(i2c_addr, i2c_data)) {
-				case rtc.ACTION_RESET_TIMER:
-					timer1_reset();
-					break;
-					// TODO
-					break;
-			}
-			i2c_addr = rtc.i2c_next_addr(i2c_addr);
-			i2c_status = I2C_RECV_BYTE_OK;
-			i2c_ack();
-			break;
-		case I2C_SEND_BYTE:
-			TWDR = rtc.i2c_read(i2c_addr);
-			i2c_addr = rtc.i2c_next_addr(i2c_addr);
-			i2c_status = I2C_SEND_BYTE_OK;
-			i2c_ack();
-			break;
-	}
-
-	// XXX
+ISR(TWI_vect)
+{
+	const uint8_t i2c_status_old = i2c_status;
+	const uint8_t tw_status_ = TW_STATUS;
+	i2c_status = i2c_statemachine(tw_status_);
+	i2c_ack();
+	i2c_event_queue_push(tw_status_, i2c_status_old, i2c_status, i2c_addr);
 }
 
 /******************************************************************************
@@ -368,20 +305,14 @@ static const char *i2c_status_str(uint8_t i2c_status)
 			return "IDLE     ";
 		case I2C_START:
 			return "START    ";
-		case I2C_START_OK:
-			return "START_OK ";
 		case I2C_HAS_ADDR:
 			return "HAS_ADDR ";
 		case I2C_SEND_READY:
 			return "SEND_RDY ";
 		case I2C_SEND_BYTE:
 			return "SEND_BYTE";
-		case I2C_SEND_BYTE_OK:
-			return "SEND_BYTE_OK";
 		case I2C_RECV_BYTE:
 			return "RECV_BYTE";
-		case I2C_RECV_BYTE_OK:
-			return "RECV_BYTE_OK";
 		case I2C_ERR:
 			return "ERR      ";
 		default:
@@ -425,8 +356,6 @@ int main()
 			uart_puts(i2c_status_str(e.next_state));
 			uart_puts("\t0x");
 			uart_put_hex(e.addr);
-			uart_puts("\t0x");
-			uart_put_hex(e.data);
 			uart_puts("\n");
 		}
 
