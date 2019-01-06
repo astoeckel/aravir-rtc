@@ -16,7 +16,7 @@ The library should be more-or-less register compatible with the following I²C h
 * [DS3231](https://www.maximintegrated.com/en/products/DS3231)
 * [DS3232](https://www.maximintegrated.com/en/products/DS3232)
 
-Note that this code is not intended to be a perfect replacement for the hardware chips, it mainly focuses on what is required by the Linux driver. You will need to invest a lot of effort to actually implement an accurate second-clock source to drive this library, so depending on your requirements, you should just go for one of the hardware chips!
+Note that this code is not intended to be a perfect replacement for the hardware chips, it mainly focuses on what is required by the Linux driver. You will need to invest a lot of effort to actually implement an accurate second-clock source to drive this library, so depending on your requirements, you may want to go for one of the hardware chips!
 
 ### Extensions
 
