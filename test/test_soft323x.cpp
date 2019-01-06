@@ -28,7 +28,8 @@
 void test_initialisation()
 {
 	Soft323x<> soft323x;  // Initialises to Tuesday, 2019/01/01 00:00
-	EXPECT_EQ(2019, soft323x.year());
+	EXPECT_EQ(20, soft323x.century());
+	EXPECT_EQ(19, soft323x.year());
 	EXPECT_EQ(1, soft323x.month());
 	EXPECT_EQ(1, soft323x.date());
 	EXPECT_EQ(2, soft323x.day());
@@ -40,47 +41,47 @@ void test_initialisation()
 
 void test_is_leap_year()
 {
-	EXPECT_FALSE(Soft323x<>::is_leap_year(1900));
-	EXPECT_TRUE(Soft323x<>::is_leap_year(1904));
-	EXPECT_TRUE(Soft323x<>::is_leap_year(2000));
-	EXPECT_FALSE(Soft323x<>::is_leap_year(2019));
-	EXPECT_TRUE(Soft323x<>::is_leap_year(2020));
-	EXPECT_FALSE(Soft323x<>::is_leap_year(2100));
-	EXPECT_FALSE(Soft323x<>::is_leap_year(2200));
-	EXPECT_FALSE(Soft323x<>::is_leap_year(2300));
-	EXPECT_TRUE(Soft323x<>::is_leap_year(2400));
+	EXPECT_FALSE(Soft323x<>::is_leap_year(19, 0));
+	EXPECT_TRUE(Soft323x<>::is_leap_year(19, 4));
+	EXPECT_TRUE(Soft323x<>::is_leap_year(20, 0));
+	EXPECT_FALSE(Soft323x<>::is_leap_year(20, 19));
+	EXPECT_TRUE(Soft323x<>::is_leap_year(20, 20));
+	EXPECT_FALSE(Soft323x<>::is_leap_year(21, 0));
+	EXPECT_FALSE(Soft323x<>::is_leap_year(22, 0));
+	EXPECT_FALSE(Soft323x<>::is_leap_year(23, 0));
+	EXPECT_TRUE(Soft323x<>::is_leap_year(24, 0));
 }
 
 void test_number_of_days()
 {
-	EXPECT_EQ(31, Soft323x<>::number_of_days(1, 2000));
-	EXPECT_EQ(29, Soft323x<>::number_of_days(2, 2000));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(3, 2000));
-	EXPECT_EQ(30, Soft323x<>::number_of_days(4, 2000));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(5, 2000));
-	EXPECT_EQ(30, Soft323x<>::number_of_days(6, 2000));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(7, 2000));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(8, 2000));
-	EXPECT_EQ(30, Soft323x<>::number_of_days(9, 2000));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(10, 2000));
-	EXPECT_EQ(30, Soft323x<>::number_of_days(11, 2000));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(12, 2000));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(1, 20, 0));
+	EXPECT_EQ(29, Soft323x<>::number_of_days(2, 20, 0));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(3, 20, 0));
+	EXPECT_EQ(30, Soft323x<>::number_of_days(4, 20, 0));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(5, 20, 0));
+	EXPECT_EQ(30, Soft323x<>::number_of_days(6, 20, 0));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(7, 20, 0));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(8, 20, 0));
+	EXPECT_EQ(30, Soft323x<>::number_of_days(9, 20, 0));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(10, 20, 0));
+	EXPECT_EQ(30, Soft323x<>::number_of_days(11, 20, 0));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(12, 20, 0));
 
-	EXPECT_EQ(31, Soft323x<>::number_of_days(1, 2001));
-	EXPECT_EQ(28, Soft323x<>::number_of_days(2, 2001));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(3, 2001));
-	EXPECT_EQ(30, Soft323x<>::number_of_days(4, 2001));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(5, 2001));
-	EXPECT_EQ(30, Soft323x<>::number_of_days(6, 2001));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(7, 2001));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(8, 2001));
-	EXPECT_EQ(30, Soft323x<>::number_of_days(9, 2001));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(10, 2001));
-	EXPECT_EQ(30, Soft323x<>::number_of_days(11, 2001));
-	EXPECT_EQ(31, Soft323x<>::number_of_days(12, 2001));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(1, 20, 1));
+	EXPECT_EQ(28, Soft323x<>::number_of_days(2, 20, 1));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(3, 20, 1));
+	EXPECT_EQ(30, Soft323x<>::number_of_days(4, 20, 1));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(5, 20, 1));
+	EXPECT_EQ(30, Soft323x<>::number_of_days(6, 20, 1));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(7, 20, 1));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(8, 20, 1));
+	EXPECT_EQ(30, Soft323x<>::number_of_days(9, 20, 1));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(10, 20, 1));
+	EXPECT_EQ(30, Soft323x<>::number_of_days(11, 20, 1));
+	EXPECT_EQ(31, Soft323x<>::number_of_days(12, 20, 1));
 
-	EXPECT_EQ(0, Soft323x<>::number_of_days(0, 2001));
-	EXPECT_EQ(0, Soft323x<>::number_of_days(13, 2001));
+	EXPECT_EQ(0, Soft323x<>::number_of_days(0, 20, 1));
+	EXPECT_EQ(0, Soft323x<>::number_of_days(13, 20, 1));
 }
 
 void test_update_24_hours()
@@ -93,7 +94,7 @@ void test_update_24_hours()
 		printf("\rTesting year %d...", year);
 		fflush(stdout);
 		for (int month = 1; month <= 12; month++) {
-			const uint8_t n_days = Soft323x<>::number_of_days(month, year);
+			const uint8_t n_days = Soft323x<>::number_of_days(month, year / 100, year % 100);
 			for (int date = 1; date <= n_days; date++, day++) {
 				if (day > 7) {
 					day = 1;
@@ -101,7 +102,8 @@ void test_update_24_hours()
 				for (int hours = 0; hours <= 23; hours++) {
 					for (int minutes = 0; minutes <= 59; minutes++) {
 						for (int seconds = 0; seconds <= 59; seconds++) {
-							ASSERT_EQ(year, soft323x.year());
+							ASSERT_EQ(year / 100, soft323x.century());
+							ASSERT_EQ(year % 100, soft323x.year());
 							ASSERT_EQ(month, soft323x.month());
 							ASSERT_EQ(date, soft323x.date());
 							ASSERT_EQ(day, soft323x.day());
@@ -136,7 +138,7 @@ void test_update_12_hours()
 		printf("\rTesting year %d...", year);
 		fflush(stdout);
 		for (int month = 1; month <= 12; month++) {
-			const uint8_t n_days = Soft323x<>::number_of_days(month, year);
+			const uint8_t n_days = Soft323x<>::number_of_days(month, year / 100, year % 100);
 			for (int date = 1; date <= n_days; date++, day++) {
 				if (day > 7) {
 					day = 1;
@@ -144,7 +146,8 @@ void test_update_12_hours()
 				for (int hours = 0; hours <= 23; hours++) {
 					for (int minutes = 0; minutes <= 59; minutes++) {
 						for (int seconds = 0; seconds <= 59; seconds++) {
-							ASSERT_EQ(year, soft323x.year());
+							ASSERT_EQ(year / 100, soft323x.century());
+							ASSERT_EQ(year % 100, soft323x.year());
 							ASSERT_EQ(month, soft323x.month());
 							ASSERT_EQ(date, soft323x.date());
 							ASSERT_EQ(day, soft323x.day());
@@ -315,11 +318,13 @@ void test_write_month()
 	// Set month to February with/without the century flag
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2) | t.BIT_MONTH_CENTURY));
 	EXPECT_EQ(2, t.month());
-	EXPECT_EQ(2019, t.year());
+	EXPECT_EQ(20, t.century());
+	EXPECT_EQ(19, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2)));
 	EXPECT_EQ(2, t.month());
-	EXPECT_EQ(1919, t.year());
+	EXPECT_EQ(19, t.century());
+	EXPECT_EQ(19, t.year());
 
 	// This should now be the 28th
 	t.update();
@@ -338,62 +343,76 @@ void test_write_year()
 	Soft323x<> t;
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_YEAR, t.bcd_enc(1)));
-	EXPECT_EQ(2001, t.year());
+	EXPECT_EQ(20, t.century());
+	EXPECT_EQ(1, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(1)));
 	EXPECT_EQ(0, t.i2c_write(t.REG_YEAR, t.bcd_enc(1)));
-	EXPECT_EQ(1901, t.year());
+	EXPECT_EQ(19, t.century());
+	EXPECT_EQ(1, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_YEAR, t.bcd_enc(99)));
-	EXPECT_EQ(1999, t.year());
+	EXPECT_EQ(19, t.century());
+	EXPECT_EQ(99, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_YEAR, t.bcd_enc(49)));
-	EXPECT_EQ(1949, t.year());
+	EXPECT_EQ(19, t.century());
+	EXPECT_EQ(49, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_YEAR, 0xFF));
-	EXPECT_EQ(1999, t.year());
+	EXPECT_EQ(19, t.century());
+	EXPECT_EQ(99, t.year());
 
 	// Change the date to 2000/02/29
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2) | t.BIT_MONTH_CENTURY));
 	EXPECT_EQ(0, t.i2c_write(t.REG_DATE, t.bcd_enc(29)));
 	EXPECT_EQ(0, t.i2c_write(t.REG_YEAR, 0));
 	t.update();
-	EXPECT_EQ(2000, t.year());
+	EXPECT_EQ(20, t.century());
+	EXPECT_EQ(0, t.year());
 	EXPECT_EQ(2, t.month());
 	EXPECT_EQ(29, t.date());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_YEAR, 1));
-	EXPECT_EQ(2001, t.year());
+	EXPECT_EQ(20, t.century());
+	EXPECT_EQ(1, t.year());
 	EXPECT_EQ(2, t.month());
 	EXPECT_EQ(29, t.date());
 	t.update();
-	EXPECT_EQ(2001, t.year());
+	EXPECT_EQ(20, t.century());
+	EXPECT_EQ(1, t.year());
 	EXPECT_EQ(2, t.month());
 	EXPECT_EQ(28, t.date());
 
 	// Test the century bits
 	EXPECT_EQ(0, t.i2c_write(t.REG_YEAR, t.bcd_enc(99)));
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2) | t.BIT_MONTH_CENTURY0));
-	EXPECT_EQ(2099, t.year());
+	EXPECT_EQ(20, t.century());
+	EXPECT_EQ(99, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2) | t.BIT_MONTH_CENTURY1));
-	EXPECT_EQ(2199, t.year());
+	EXPECT_EQ(21, t.century());
+	EXPECT_EQ(99, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2) | t.BIT_MONTH_CENTURY2));
-	EXPECT_EQ(2399, t.year());
+	EXPECT_EQ(23, t.century());
+	EXPECT_EQ(99, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2) | t.BIT_MONTH_CENTURY2 |
 	                                          t.BIT_MONTH_CENTURY0));
-	EXPECT_EQ(2499, t.year());
+	EXPECT_EQ(24, t.century());
+	EXPECT_EQ(99, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2) | t.BIT_MONTH_CENTURY2 |
 	                                          t.BIT_MONTH_CENTURY1));
-	EXPECT_EQ(2599, t.year());
+	EXPECT_EQ(25, t.century());
+	EXPECT_EQ(99, t.year());
 
 	EXPECT_EQ(0, t.i2c_write(t.REG_MONTH, t.bcd_enc(2) | t.BIT_MONTH_CENTURY2 |
 	                                          t.BIT_MONTH_CENTURY1 |
 	                                          t.BIT_MONTH_CENTURY0));
-	EXPECT_EQ(2699, t.year());
+	EXPECT_EQ(26, t.century());
+	EXPECT_EQ(99, t.year());
 }
 
 void test_write_ctrl_1()

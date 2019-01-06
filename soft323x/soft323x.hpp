@@ -148,9 +148,11 @@ private:
 	 * Used internally by update() to make sure that the date/month/year
 	 * combination is valid.
 	 */
-	void canonicalise_date() {
-		const uint8_t n_days = number_of_days(month(), year(), century());
-		m_regs.regs.date = bcd_canon(m_regs.regs.date, bcd_enc(1), bcd_enc(n_days));
+	void canonicalise_date()
+	{
+		const uint8_t n_days = number_of_days(month(), century(), year());
+		m_regs.regs.date =
+		    bcd_canon(m_regs.regs.date, bcd_enc(1), bcd_enc(n_days));
 	}
 
 	/**
@@ -179,7 +181,8 @@ private:
 					// Overflow from 12 -> 1
 					t.hours = (t.hours & ~MASK_HOURS_12_HOURS) | bcd_enc(1);
 					return;
-				} else if ((t.hours & MASK_HOURS_12_HOURS) == bcd_enc(12)) {
+				}
+				else if ((t.hours & MASK_HOURS_12_HOURS) == bcd_enc(12)) {
 					// Flip the PM/AM flag
 					t.hours = t.hours ^ BIT_HOUR_PM;
 					if (t.hours & BIT_HOUR_PM) {
@@ -205,7 +208,7 @@ private:
 
 		// Increment the date
 		{
-			const uint8_t n_days = number_of_days(month(), year(), century());
+			const uint8_t n_days = number_of_days(month(), century(), year());
 			if (!increment_bcd(t.date, MASK_DATE, bcd_enc(n_days), 1)) {
 				return;
 			}
@@ -280,11 +283,13 @@ private:
 		                              : (t.alarm_2_day_or_date & MASK_DATE);
 
 		// Compute whether the alarm has triggered
-		const bool alarm1 =
-		    (!a1f) && (a1m1 || (!a1m1 && (a1_ss == ss))) && (a1m2 || (!a1m2 && (a1_mm == mm))) &&
-		    (a1m3 || (!a1m3 && (a1_hh == hh))) && (a1m4 || (!a1m4 && ((a1dy ? dy : dt) == a1_dy_dt)));
+		const bool alarm1 = (!a1f) && (a1m1 || (!a1m1 && (a1_ss == ss))) &&
+		                    (a1m2 || (!a1m2 && (a1_mm == mm))) &&
+		                    (a1m3 || (!a1m3 && (a1_hh == hh))) &&
+		                    (a1m4 || (!a1m4 && ((a1dy ? dy : dt) == a1_dy_dt)));
 
-		const bool alarm2 = (!a2f) && (ss == 0) && (a2m1 || (!a2m1 && (a2_mm == mm))) &&
+		const bool alarm2 = (!a2f) && (ss == 0) &&
+		                    (a2m1 || (!a2m1 && (a2_mm == mm))) &&
 		                    (a2m2 || (!a2m2 && (a2_hh == hh))) &&
 		                    (a2m3 || (!a2m3 && ((a2dy ? dy : dt) == a2_dy_dt)));
 
@@ -437,11 +442,11 @@ public:
 	 * this is a leap year. Year is relative to the beginning of the epoch.
 	 * @return true if the given year is a leap year, false otherwise.
 	 */
-	static constexpr bool is_leap_year(uint8_t year, uint8_t century)
+	static constexpr bool is_leap_year(uint8_t century, uint8_t year)
 	{
-		if ((year & 3U) == 0U) { // Divisible by four
-			if (year == 0U) { // Is divisible by 100
-				return (century & 3U) == 0U; // Century is a multiple of 400
+		if ((year & 3U) == 0U) {              // Divisible by four
+			if (year == 0U) {                 // Is divisible by 100
+				return (century & 3U) == 0U;  // Century is a multiple of 400
 			}
 			return true;
 		}
@@ -454,10 +459,12 @@ public:
 	 *
 	 * @param month is the month for which the number of days should be
 	 * computed. Must be a value between 1 and 31.
-	 * @param year is the year corresponding to the month for which the year
-	 * should be computed. Only relevant for leap years and Februrary.
+	 * @param century is the year divided by 100.
+	 * @param year encodes the two last digits of the year (i.e. year modulo
+	 * 100).
 	 */
-	static constexpr uint8_t number_of_days(uint8_t month, uint8_t year, uint8_t year_century)
+	static constexpr uint8_t number_of_days(uint8_t month, uint8_t century,
+	                                        uint8_t year)
 	{
 		// Courtesy of the knuckle rule. See
 		// https://happyhooligans.ca/trick-to-remember-which-months-have-31-days/
@@ -466,7 +473,7 @@ public:
 			case 1:
 				return 31;
 			case 2:
-				if (is_leap_year(year, year_century)) {
+				if (is_leap_year(century, year)) {
 					return 29;
 				}
 				return 28;
@@ -637,17 +644,18 @@ public:
 	uint8_t month() const { return bcd_dec(m_regs.regs.month & MASK_MONTH); }
 
 	/**
-	 * Returns the current year assuming that a century value of "0" corresponds
-	 * to the year 1900, and a value of "1" to the year 2000. Since this code
-	 * was written in the 2010's the correct offset doesn't really matter to me
-	 * for leap-year computation w.r.t. to the 100/400 years rule. Sorry.
+	 * Returns the last two digits of the current year.
 	 */
-	uint8_t year() const
-	{
-		return bcd_dec(m_regs.regs.year & MASK_YEAR);
-	}
+	uint8_t year() const { return bcd_dec(m_regs.regs.year & MASK_YEAR); }
 
-	uint8_t century() const {
+	/**
+	 * Returns the first two digits of the current year, i.e. the year divided
+	 * by 100. Assuming that a century value of "0" stored in the RTC registers
+	 * corresponds to the year 1900, and a value of "1" to the year 2000. The
+	 * minimum return value is 19, the maximum return value is 26.
+	 */
+	uint8_t century() const
+	{
 		const Registers &t = m_regs.regs;
 		uint8_t century = 19;
 		if (t.month & BIT_MONTH_CENTURY0) {
@@ -803,7 +811,8 @@ public:
 				if (is_12_hour) {
 					m_regs.mem[addr] = bcd_canon(value & MASK_HOURS_12_HOURS,
 					                             bcd_enc(1), bcd_enc(12)) |
-					                   BIT_HOUR_12_HOURS | (value & BIT_HOUR_PM);
+					                   BIT_HOUR_12_HOURS |
+					                   (value & BIT_HOUR_PM);
 				}
 				else {
 					m_regs.mem[addr] = bcd_canon(value & MASK_HOURS_24_HOURS,
@@ -863,16 +872,16 @@ public:
 				     (BIT_CTRL_2_OSF | BIT_CTRL_2_A1F | BIT_CTRL_2_A2F)) |
 				    (value & BIT_CTRL_2_BSY);
 				break;
-			case REG_CTRL_3: // Reg 13h: Control 3
+			case REG_CTRL_3:  // Reg 13h: Control 3
 				m_regs.mem[addr] = value & BIT_CTRL_3_BB_TD;
 				break;
-			case REG_TEMP_MSB: // Reg 11h: Temp MSB
-			case REG_TEMP_LSB: // Reg 12h: Temp LSB
+			case REG_TEMP_MSB:  // Reg 11h: Temp MSB
+			case REG_TEMP_LSB:  // Reg 12h: Temp LSB
 				// Read-only
 				break;
-			case REG_AGING_OFFSET: // Reg 10h: Aging offset
-				// Just write to the register bank
-			default:  // SRAM
+			case REG_AGING_OFFSET:  // Reg 10h: Aging offset
+			                        // Just write to the register bank
+			default:                // SRAM
 				if (addr < sizeof(m_regs)) {
 					m_regs.mem[addr] = value;
 				}
@@ -891,7 +900,8 @@ public:
 	 * Returns the next I2C address. Updates the clock when the next address is
 	 * zero.
 	 */
-	uint8_t i2c_next_addr(uint8_t addr) {
+	uint8_t i2c_next_addr(uint8_t addr)
+	{
 		addr++;
 		if (addr >= sizeof(Registers)) {
 			addr = 0;
