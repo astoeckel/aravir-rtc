@@ -149,7 +149,7 @@ private:
 	 * combination is valid.
 	 */
 	void canonicalise_date() {
-		const uint8_t n_days = number_of_days(month(), year());
+		const uint8_t n_days = number_of_days(month(), year(), century());
 		m_regs.regs.date = bcd_canon(m_regs.regs.date, bcd_enc(1), bcd_enc(n_days));
 	}
 
@@ -205,7 +205,7 @@ private:
 
 		// Increment the date
 		{
-			const uint8_t n_days = number_of_days(month(), year());
+			const uint8_t n_days = number_of_days(month(), year(), century());
 			if (!increment_bcd(t.date, MASK_DATE, bcd_enc(n_days), 1)) {
 				return;
 			}
@@ -437,9 +437,15 @@ public:
 	 * this is a leap year. Year is relative to the beginning of the epoch.
 	 * @return true if the given year is a leap year, false otherwise.
 	 */
-	static constexpr bool is_leap_year(uint16_t year)
+	static constexpr bool is_leap_year(uint8_t year, uint8_t century)
 	{
-		return (year % 4U == 0U) && ((year % 100U != 0) || (year % 400U == 0));
+		if ((year & 3U) == 0U) { // Divisible by four
+			if (year == 0U) { // Is divisible by 100
+				return (century & 3U) == 0U; // Century is a multiple of 400
+			}
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -451,7 +457,7 @@ public:
 	 * @param year is the year corresponding to the month for which the year
 	 * should be computed. Only relevant for leap years and Februrary.
 	 */
-	static constexpr uint8_t number_of_days(uint8_t month, uint16_t year)
+	static constexpr uint8_t number_of_days(uint8_t month, uint8_t year, uint8_t year_century)
 	{
 		// Courtesy of the knuckle rule. See
 		// https://happyhooligans.ca/trick-to-remember-which-months-have-31-days/
@@ -460,7 +466,7 @@ public:
 			case 1:
 				return 31;
 			case 2:
-				if (is_leap_year(year)) {
+				if (is_leap_year(year, year_century)) {
 					return 29;
 				}
 				return 28;
@@ -636,20 +642,24 @@ public:
 	 * was written in the 2010's the correct offset doesn't really matter to me
 	 * for leap-year computation w.r.t. to the 100/400 years rule. Sorry.
 	 */
-	uint16_t year() const
+	uint8_t year() const
 	{
+		return bcd_dec(m_regs.regs.year & MASK_YEAR);
+	}
+
+	uint8_t century() const {
 		const Registers &t = m_regs.regs;
-		uint16_t year = 1900 + bcd_dec(t.year & MASK_YEAR);
+		uint8_t century = 19;
 		if (t.month & BIT_MONTH_CENTURY0) {
-			year += 100;
+			century += 1;
 		}
 		if (t.month & BIT_MONTH_CENTURY1) {
-			year += 200;
+			century += 2;
 		}
 		if (t.month & BIT_MONTH_CENTURY2) {
-			year += 400;
+			century += 4;
 		}
-		return year;
+		return century;
 	}
 
 	/**************************************************************************
