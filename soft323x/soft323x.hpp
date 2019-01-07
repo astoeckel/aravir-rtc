@@ -27,6 +27,9 @@
  * @author Andreas Stöckel
  */
 
+#ifndef SOFT323X_HPP
+#define SOFT323X_HPP
+
 #include <stdint.h>
 
 #if __AVR__
@@ -770,7 +773,8 @@ public:
 	/**
 	 * Reads the byte stored at the given address.
 	 *
-	 * @param addr is the address that should be read. Must be between
+	 * @param addr is the address that should be read. Returns zero if the
+	 * address is out of bounds.
 	 */
 	uint8_t i2c_read(uint8_t addr) const
 	{
@@ -913,3 +917,4 @@ public:
 	}
 };
 #pragma pack(pop)
+#endif /* SOFT323X_HPP */
